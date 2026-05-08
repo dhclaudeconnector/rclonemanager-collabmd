@@ -2,7 +2,7 @@
 # Deploys the modular Docker Compose stack via dc.sh.
 # Supports both ubuntu-latest and windows-latest runners.
 
-name: docker-stack-template
+name: dockerstack-collabmd
 on:
   workflow_dispatch:
   push:
@@ -49,7 +49,7 @@ jobs:
     if: >-
       (github.event_name == 'workflow_dispatch')
       ||
-      (github.event_name == 'push' && github.repository == 'o861cloudflare/dockerstack-s3proxy')
+      (github.event_name == 'push' && github.repository == 'minhnghiong-to/rclonemanager-collabmd')
       ||
       (github.event_name == 'push' && github.repository == 'o861cloudflare/dockerstack-s3proxy-2')
       || 

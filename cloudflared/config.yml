@@ -1,0 +1,23 @@
+tunnel: 39d0b369-2d64-425c-b687-b627f961a011
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - hostname: main.dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - hostname: ttyd.dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - hostname: dozzle.dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - hostname: files.dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - hostname: deploy.dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - hostname: main-local.dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - hostname: main-rclone.dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - hostname: main-git.dockerstackcollabmd.dpdns.org
+    service: http://caddy:80
+  - service: http_status:404
