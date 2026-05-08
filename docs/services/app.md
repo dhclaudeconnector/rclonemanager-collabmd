@@ -57,6 +57,12 @@ Rclone mount cần host/container hỗ trợ FUSE (`/dev/fuse`, `SYS_ADMIN`, bin
   - không dùng OIDC thì có thể đặt fallback qua `COLLABMD_GIT_USER_NAME`, `COLLABMD_GIT_USER_EMAIL`.
 - Non-interactive Git: `COLLABMD_GIT_TERMINAL_PROMPT=0`.
 - Git safe directory: `COLLABMD_GIT_SAFE_DIRECTORY`, mặc định trùng `COLLABMD_GIT_CONTAINER_DIR`.
+- CollabMD metadata sync:
+  - `COLLABMD_GIT_META_SYNC_ENABLED=true` bật sidecar `collabmd-git-meta-sync`.
+  - `COLLABMD_GIT_TRACK_COLLABMD_COMMENTS=true` làm `.collabmd/comments/**/*.json` hiện trong Git status để commit/push bằng CollabMD UI.
+  - `COLLABMD_GIT_TRACK_COLLABMD_YJS=false` giữ `.collabmd/yjs/` ngoài Git.
+  - `COLLABMD_GIT_TRACK_COLLABMD_PULL_BACKUPS=false` giữ `.collabmd/pull-backups/` ngoài Git.
+  - `COLLABMD_GIT_META_SYNC_INTERVAL_SEC=30` kiểm tra lại `.git/info/exclude` định kỳ, vì CollabMD upstream có thể tự thêm exclude `.collabmd/`.
 - Direct host port: `COLLABMD_GIT_HOST_PORT`.
 - Public Caddy site: `COLLABMD_GIT_CADDY_SITE`.
 
@@ -64,6 +70,7 @@ Khi `COLLABMD_GIT_REPO_URL` được đặt, CollabMD clone repo vào `COLLABMD_
 
 Env-only setup nên để `COLLABMD_GIT_SSH_PRIVATE_KEY_FILE=` và `COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE=` trống, rồi đặt private key đã base64 vào `COLLABMD_GIT_SSH_PRIVATE_KEY_B64`. Khi không set `COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE`, CollabMD dùng SSH `StrictHostKeyChecking=accept-new`.
 Nếu API Git báo `detected dubious ownership in repository at '/data'`, giữ `COLLABMD_GIT_SAFE_DIRECTORY=/data`; compose sẽ truyền `safe.directory` cho Git qua env `GIT_CONFIG_*`.
+Nếu muốn comment đi theo vault Git, bật `COLLABMD_GIT_META_SYNC_ENABLED=true`. Sidecar này không tự commit; nó chỉ làm file comment hiện trong Git panel, còn stage/commit/push vẫn do CollabMD xử lý theo user OIDC đang đăng nhập.
 
 ## Routing / Cloudflare Tunnel
 Mỗi hostname Cloudflare Tunnel nên trỏ về `http://caddy:80`; Caddy label sẽ route đến app tương ứng:

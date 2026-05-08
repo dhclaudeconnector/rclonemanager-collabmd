@@ -42,6 +42,9 @@ function profileArgsFromEnv(env) {
   if (env.COLLABMD_LOCAL_ENABLED !== 'false') profiles.push('collabmd-local');
   if (env.COLLABMD_RCLONE_ENABLED === 'true') profiles.push('collabmd-rclone');
   if (env.COLLABMD_GIT_DEPLOY_ENABLED === 'true') profiles.push('collabmd-git');
+  if (env.COLLABMD_GIT_DEPLOY_ENABLED === 'true' && env.COLLABMD_GIT_META_SYNC_ENABLED === 'true') {
+    profiles.push('collabmd-git-meta-sync');
+  }
   if (env.ENABLE_DOZZLE !== 'false') profiles.push('dozzle');
   if (env.ENABLE_FILEBROWSER !== 'false') profiles.push('filebrowser');
   if (env.ENABLE_WEBSSH !== 'false') profiles.push(isWindows ? 'webssh-windows' : 'webssh-linux');

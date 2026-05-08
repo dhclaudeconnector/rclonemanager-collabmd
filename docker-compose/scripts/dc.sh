@@ -208,6 +208,9 @@ fi
 
 if [ "${COLLABMD_GIT_DEPLOY_ENABLED:-false}" = "true" ]; then
   PROFILE_ARGS+=(--profile collabmd-git)
+  if [ "${COLLABMD_GIT_META_SYNC_ENABLED:-false}" = "true" ]; then
+    PROFILE_ARGS+=(--profile collabmd-git-meta-sync)
+  fi
 fi
 
 if [ "${ENABLE_DOZZLE:-true}" = "true" ]; then

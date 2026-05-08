@@ -399,6 +399,11 @@ if (boolValue("COLLABMD_GIT_DEPLOY_ENABLED", false)) {
     v === "0" || v === "1" ? null : "must be 0 or 1"
   );
   checkOptional("COLLABMD_GIT_SAFE_DIRECTORY", "git safe.directory for the container checkout", validateContainerPath);
+  checkOptional("COLLABMD_GIT_META_SYNC_IMAGE", "image used by the CollabMD git metadata sync sidecar");
+  checkOptional("COLLABMD_GIT_META_SYNC_INTERVAL_SEC", "metadata sync interval seconds", (v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 5 ? null : "must be integer >= 5";
+  });
 
   const hasGitUserName = checkOptionalIfSet("COLLABMD_GIT_USER_NAME");
   const hasGitUserEmail = checkOptionalIfSet("COLLABMD_GIT_USER_EMAIL", validateEmail);
@@ -417,10 +422,24 @@ if (boolValue("COLLABMD_GIT_DEPLOY_ENABLED", false)) {
   if (!env.COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE) {
     warnings.push("COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE not set -> CollabMD will use SSH StrictHostKeyChecking=accept-new");
   }
+
+  if (boolValue("COLLABMD_GIT_META_SYNC_ENABLED", false)) {
+    if (boolValue("COLLABMD_GIT_TRACK_COLLABMD_COMMENTS", true)) {
+      ok.push("CollabMD git metadata sync=comments visible to Git");
+    } else {
+      warnings.push("COLLABMD_GIT_META_SYNC_ENABLED=true but COLLABMD_GIT_TRACK_COLLABMD_COMMENTS=false -> .collabmd remains excluded");
+    }
+    if (boolValue("COLLABMD_GIT_TRACK_COLLABMD_YJS", false)) {
+      warnings.push("COLLABMD_GIT_TRACK_COLLABMD_YJS=true -> binary collaboration snapshots may churn/conflict in Git");
+    }
+    if (boolValue("COLLABMD_GIT_TRACK_COLLABMD_PULL_BACKUPS", false)) {
+      warnings.push("COLLABMD_GIT_TRACK_COLLABMD_PULL_BACKUPS=true -> local pull backup files may be committed");
+    }
+  }
 }
 
 // 3) Flags
-for (const key of ["ENABLE_DOZZLE", "ENABLE_FILEBROWSER", "ENABLE_WEBSSH", "ENABLE_TAILSCALE", "COLLABMD_LOCAL_ENABLED", "COLLABMD_RCLONE_ENABLED", "COLLABMD_GIT_DEPLOY_ENABLED", "COLLABMD_LOCAL_APP_GIT_ENABLED", "COLLABMD_RCLONE_APP_GIT_ENABLED", "COLLABMD_GIT_APP_GIT_ENABLED", "DOCKER_DEPLOY_CODE_ENABLED", "DOCKER_DEPLOY_CODE_POLL_ENABLED", "DOCKER_DEPLOY_CODE_AUTO_DEPLOY_ON_CHANGE", "DOCKER_DEPLOY_CODE_RUN_ON_START", "DOCKER_DEPLOY_CODE_REQUIRE_TOKEN", "DOCKER_DEPLOY_CODE_GIT_CLEAN", "DOCKER_DEPLOY_CODE_ZIP_STRIP_TOP_LEVEL", "DOCKER_DEPLOY_CODE_ZIP_DELETE_MISSING", "DOCKER_DEPLOY_CODE_ZIP_BACKUP_BEFORE_APPLY", "DOCKER_DEPLOY_CODE_ZIP_DEPLOY_AFTER_APPLY"]) {
+for (const key of ["ENABLE_DOZZLE", "ENABLE_FILEBROWSER", "ENABLE_WEBSSH", "ENABLE_TAILSCALE", "COLLABMD_LOCAL_ENABLED", "COLLABMD_RCLONE_ENABLED", "COLLABMD_GIT_DEPLOY_ENABLED", "COLLABMD_LOCAL_APP_GIT_ENABLED", "COLLABMD_RCLONE_APP_GIT_ENABLED", "COLLABMD_GIT_APP_GIT_ENABLED", "COLLABMD_GIT_META_SYNC_ENABLED", "COLLABMD_GIT_META_SYNC_ONESHOT", "COLLABMD_GIT_TRACK_COLLABMD_COMMENTS", "COLLABMD_GIT_TRACK_COLLABMD_YJS", "COLLABMD_GIT_TRACK_COLLABMD_PULL_BACKUPS", "DOCKER_DEPLOY_CODE_ENABLED", "DOCKER_DEPLOY_CODE_POLL_ENABLED", "DOCKER_DEPLOY_CODE_AUTO_DEPLOY_ON_CHANGE", "DOCKER_DEPLOY_CODE_RUN_ON_START", "DOCKER_DEPLOY_CODE_REQUIRE_TOKEN", "DOCKER_DEPLOY_CODE_GIT_CLEAN", "DOCKER_DEPLOY_CODE_ZIP_STRIP_TOP_LEVEL", "DOCKER_DEPLOY_CODE_ZIP_DELETE_MISSING", "DOCKER_DEPLOY_CODE_ZIP_BACKUP_BEFORE_APPLY", "DOCKER_DEPLOY_CODE_ZIP_DEPLOY_AFTER_APPLY"]) {
   const v = env[key];
   if (!v) {
     warnings.push(`${key} not set -> using default from scripts/compose`);

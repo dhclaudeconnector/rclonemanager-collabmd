@@ -6,6 +6,7 @@
 #    COLLABMD_LOCAL_ENABLED=true       -> service: app
 #    COLLABMD_RCLONE_ENABLED=true      -> service: collabmd-rclone
 #    COLLABMD_GIT_DEPLOY_ENABLED=true  -> service: collabmd-git
+#    COLLABMD_GIT_META_SYNC_ENABLED=true -> service: collabmd-git-meta-sync
 #
 #  Each mode has its own host directory, host port, and Caddy site.
 #  APP_PORT remains the source of truth for the in-container app port.
@@ -277,6 +278,39 @@ services:
       timeout: 5s
       retries: 3
       start_period: 75s
+
+  # Keeps selected CollabMD runtime metadata visible to Git.
+  # CollabMD upstream excludes `.collabmd/` in `.git/info/exclude`; this sidecar
+  # narrows that local exclude so `.collabmd/comments` can be committed by the UI.
+  collabmd-git-meta-sync:
+    profiles: [collabmd-git-meta-sync]
+    container_name: "collabmd-git-meta-sync"
+    image: "${COLLABMD_GIT_META_SYNC_IMAGE:-alpine/git:latest}"
+    entrypoint: ["/bin/sh", "/usr/local/bin/collabmd-git-meta-sync.sh"]
+    environment:
+      COLLABMD_GIT_CONTAINER_DIR: "${COLLABMD_GIT_CONTAINER_DIR:-/data}"
+      COLLABMD_GIT_META_SYNC_ENABLED: "${COLLABMD_GIT_META_SYNC_ENABLED:-false}"
+      COLLABMD_GIT_META_SYNC_INTERVAL_SEC: "${COLLABMD_GIT_META_SYNC_INTERVAL_SEC:-30}"
+      COLLABMD_GIT_META_SYNC_ONESHOT: "${COLLABMD_GIT_META_SYNC_ONESHOT:-false}"
+      COLLABMD_GIT_TRACK_COLLABMD_COMMENTS: "${COLLABMD_GIT_TRACK_COLLABMD_COMMENTS:-true}"
+      COLLABMD_GIT_TRACK_COLLABMD_YJS: "${COLLABMD_GIT_TRACK_COLLABMD_YJS:-false}"
+      COLLABMD_GIT_TRACK_COLLABMD_PULL_BACKUPS: "${COLLABMD_GIT_TRACK_COLLABMD_PULL_BACKUPS:-false}"
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: "safe.directory"
+      GIT_CONFIG_VALUE_0: "${COLLABMD_GIT_SAFE_DIRECTORY:-${COLLABMD_GIT_CONTAINER_DIR:-/data}}"
+    volumes:
+      - type: bind
+        source: ${COLLABMD_GIT_HOST_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/git/vault}
+        target: ${COLLABMD_GIT_CONTAINER_DIR:-/data}
+      - type: bind
+        source: ./docker-compose/scripts/collabmd-git-meta-sync.sh
+        target: /usr/local/bin/collabmd-git-meta-sync.sh
+        read_only: true
+    depends_on:
+      collabmd-git:
+        condition: service_started
+    networks: [app_net]
+    restart: unless-stopped
 
   # ── Shared private PlantUML renderer for enabled CollabMD apps ─
   collabmd-plantuml:
