@@ -398,6 +398,7 @@ if (boolValue("COLLABMD_GIT_DEPLOY_ENABLED", false)) {
   checkOptional("COLLABMD_GIT_TERMINAL_PROMPT", "0 disables interactive git prompts", (v) =>
     v === "0" || v === "1" ? null : "must be 0 or 1"
   );
+  checkOptional("COLLABMD_GIT_SAFE_DIRECTORY", "git safe.directory for the container checkout", validateContainerPath);
 
   const hasGitUserName = checkOptionalIfSet("COLLABMD_GIT_USER_NAME");
   const hasGitUserEmail = checkOptionalIfSet("COLLABMD_GIT_USER_EMAIL", validateEmail);
