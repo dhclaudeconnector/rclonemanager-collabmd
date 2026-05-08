@@ -1,0 +1,285 @@
+# ================================================================
+#  compose.apps.yml — CollabMD Application Layer
+#
+#  Deploys https://github.com/andes90/collabmd as independent app
+#  instances selected by env-driven profiles:
+#    COLLABMD_LOCAL_ENABLED=true       -> service: app
+#    COLLABMD_RCLONE_ENABLED=true      -> service: collabmd-rclone
+#    COLLABMD_GIT_DEPLOY_ENABLED=true  -> service: collabmd-git
+#
+#  Each mode has its own host directory, host port, and Caddy site.
+#  APP_PORT remains the source of truth for the in-container app port.
+# ================================================================
+
+x-collabmd-common-env: &collabmd-common-env
+  NODE_ENV: "${COLLABMD_NODE_ENV:-production}"
+  HOST: "0.0.0.0"
+  PORT: "${APP_PORT:-1234}"
+  AUTH_STRATEGY: "${COLLABMD_AUTH_STRATEGY:-none}"
+  AUTH_PASSWORD: "${COLLABMD_AUTH_PASSWORD:-}"
+  AUTH_SESSION_SECRET: "${COLLABMD_AUTH_SESSION_SECRET:-}"
+  AUTH_SESSION_MAX_AGE_MS: "${COLLABMD_AUTH_SESSION_MAX_AGE_MS:-}"
+  AUTH_OIDC_CLIENT_ID: "${COLLABMD_AUTH_OIDC_CLIENT_ID:-}"
+  AUTH_OIDC_CLIENT_SECRET: "${COLLABMD_AUTH_OIDC_CLIENT_SECRET:-}"
+  AUTH_OIDC_ALLOWED_EMAILS: "${COLLABMD_AUTH_OIDC_ALLOWED_EMAILS:-}"
+  AUTH_OIDC_ALLOWED_DOMAINS: "${COLLABMD_AUTH_OIDC_ALLOWED_DOMAINS:-}"
+  AUTH_OIDC_ISSUER_URL: "${COLLABMD_AUTH_OIDC_ISSUER_URL:-}"
+  AUTH_OIDC_FLOW_COOKIE_NAME: "${COLLABMD_AUTH_OIDC_FLOW_COOKIE_NAME:-collabmd_auth_flow}"
+  BASE_PATH: "${COLLABMD_BASE_PATH:-}"
+  PUBLIC_WS_BASE_URL: "${COLLABMD_PUBLIC_WS_BASE_URL:-}"
+  WS_BASE_PATH: "${COLLABMD_WS_BASE_PATH:-/ws}"
+  PLANTUML_SERVER_URL: "${COLLABMD_PLANTUML_SERVER_URL:-http://collabmd-plantuml:8080}"
+  COLLABMD_WIKI_LINK_AUTO_CREATE: "${COLLABMD_WIKI_LINK_AUTO_CREATE:-true}"
+  COLLABMD_DRAWIO_BASE_URL: "${COLLABMD_DRAWIO_BASE_URL:-}"
+  COLLABMD_MAX_ARCHIVE_ENTRIES: "${COLLABMD_MAX_ARCHIVE_ENTRIES:-10000}"
+  COLLABMD_MAX_BASE_QUERY_ROWS: "${COLLABMD_MAX_BASE_QUERY_ROWS:-5000}"
+  COLLABMD_MAX_DOWNLOAD_FILE_BYTES: "${COLLABMD_MAX_DOWNLOAD_FILE_BYTES:-268435456}"
+  COLLABMD_MAX_INITIAL_SYNC_BYTES: "${COLLABMD_MAX_INITIAL_SYNC_BYTES:-16777216}"
+  HTTP_KEEP_ALIVE_TIMEOUT_MS: "${COLLABMD_HTTP_KEEP_ALIVE_TIMEOUT_MS:-5000}"
+  HTTP_HEADERS_TIMEOUT_MS: "${COLLABMD_HTTP_HEADERS_TIMEOUT_MS:-60000}"
+  HTTP_REQUEST_TIMEOUT_MS: "${COLLABMD_HTTP_REQUEST_TIMEOUT_MS:-30000}"
+  WS_HEARTBEAT_INTERVAL_MS: "${COLLABMD_WS_HEARTBEAT_INTERVAL_MS:-30000}"
+  WS_ROOM_IDLE_GRACE_MS: "${COLLABMD_WS_ROOM_IDLE_GRACE_MS:-60000}"
+  WS_MAX_BUFFERED_AMOUNT_BYTES: "${COLLABMD_WS_MAX_BUFFERED_AMOUNT_BYTES:-16777216}"
+  WS_MAX_PAYLOAD_BYTES: "${COLLABMD_WS_MAX_PAYLOAD_BYTES:-16777216}"
+
+services:
+  # ── CollabMD local folder mode ────────────────────────────────
+  # Kept as service `app` to preserve the app-layer contract.
+  app:
+    profiles: [collabmd-local]
+    container_name: "collabmd-local"
+    image: "${COLLABMD_IMAGE:-ghcr.io/andes90/collabmd:latest}"
+    env_file:
+      - ./.env
+    environment:
+      <<: *collabmd-common-env
+      AUTH_STRATEGY: "${COLLABMD_LOCAL_AUTH_STRATEGY:-${COLLABMD_AUTH_STRATEGY:-none}}"
+      AUTH_PASSWORD: "${COLLABMD_LOCAL_AUTH_PASSWORD:-${COLLABMD_AUTH_PASSWORD:-}}"
+      AUTH_SESSION_COOKIE_NAME: "${COLLABMD_LOCAL_AUTH_SESSION_COOKIE_NAME:-${COLLABMD_AUTH_SESSION_COOKIE_NAME:-collabmd_local_auth}}"
+      PUBLIC_BASE_URL: "${COLLABMD_LOCAL_PUBLIC_BASE_URL:-${COLLABMD_PUBLIC_BASE_URL:-https://collabmd-local.${DOMAIN}}}"
+      COLLABMD_VAULT_DIR: "${COLLABMD_LOCAL_CONTAINER_DIR:-/data}"
+      COLLABMD_GIT_ENABLED: "${COLLABMD_LOCAL_APP_GIT_ENABLED:-false}"
+      COLLABMD_GIT_REPO_URL: ""
+      COLLABMD_GIT_SSH_PRIVATE_KEY_FILE: ""
+      COLLABMD_GIT_SSH_PRIVATE_KEY_B64: ""
+      COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE: ""
+      COLLABMD_GIT_USER_NAME: ""
+      COLLABMD_GIT_USER_EMAIL: ""
+    ports:
+      - "${COLLABMD_LOCAL_BIND_IP:-127.0.0.1}:${COLLABMD_LOCAL_HOST_PORT:-${APP_HOST_PORT:-1234}}:${APP_PORT:-1234}"
+    volumes:
+      - type: bind
+        source: ${COLLABMD_LOCAL_HOST_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/local/vault}
+        target: ${COLLABMD_LOCAL_CONTAINER_DIR:-/data}
+    labels:
+      - "caddy=${COLLABMD_LOCAL_CADDY_SITE:-http://collabmd-local.${DOMAIN}}"
+      - "caddy.reverse_proxy={{upstreams ${APP_PORT:-1234}}}"
+      - "caddy.basic_auth=/*"
+      - "caddy.basic_auth.${CADDY_AUTH_USER:-admin}=${CADDY_AUTH_HASH}"
+      - "caddy_1=${COLLABMD_LOCAL_TAILSCALE_SITE:-https://collabmd-local.${TAILSCALE_TAILNET_DOMAIN:-tailnet.local}}"
+      - "caddy_1.tls=internal"
+      - "caddy_1.reverse_proxy={{upstreams ${APP_PORT:-1234}}}"
+      - "caddy_1.basic_auth=/*"
+      - "caddy_1.basic_auth.${CADDY_AUTH_USER:-admin}=${CADDY_AUTH_HASH}"
+    depends_on:
+      collabmd-plantuml:
+        condition: service_started
+    networks: [app_net]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "sh"
+        - "-c"
+        - "wget -qO- http://localhost:${APP_PORT:-1234}${HEALTH_PATH:-/health} || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+  # ── CollabMD rclone-mounted folder mode ───────────────────────
+  collabmd-rclone:
+    profiles: [collabmd-rclone]
+    container_name: "collabmd-rclone"
+    image: "${COLLABMD_IMAGE:-ghcr.io/andes90/collabmd:latest}"
+    env_file:
+      - ./.env
+    environment:
+      <<: *collabmd-common-env
+      AUTH_STRATEGY: "${COLLABMD_RCLONE_AUTH_STRATEGY:-${COLLABMD_AUTH_STRATEGY:-none}}"
+      AUTH_PASSWORD: "${COLLABMD_RCLONE_AUTH_PASSWORD:-${COLLABMD_AUTH_PASSWORD:-}}"
+      AUTH_SESSION_COOKIE_NAME: "${COLLABMD_RCLONE_AUTH_SESSION_COOKIE_NAME:-${COLLABMD_AUTH_SESSION_COOKIE_NAME:-collabmd_rclone_auth}}"
+      PUBLIC_BASE_URL: "${COLLABMD_RCLONE_PUBLIC_BASE_URL:-${COLLABMD_PUBLIC_BASE_URL:-https://collabmd-rclone.${DOMAIN}}}"
+      COLLABMD_VAULT_DIR: "${COLLABMD_RCLONE_CONTAINER_DIR:-/data}"
+      COLLABMD_GIT_ENABLED: "${COLLABMD_RCLONE_APP_GIT_ENABLED:-false}"
+      COLLABMD_GIT_REPO_URL: ""
+      COLLABMD_GIT_SSH_PRIVATE_KEY_FILE: ""
+      COLLABMD_GIT_SSH_PRIVATE_KEY_B64: ""
+      COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE: ""
+      COLLABMD_GIT_USER_NAME: ""
+      COLLABMD_GIT_USER_EMAIL: ""
+    ports:
+      - "${COLLABMD_RCLONE_BIND_IP:-127.0.0.1}:${COLLABMD_RCLONE_HOST_PORT:-1235}:${APP_PORT:-1234}"
+    volumes:
+      - type: bind
+        source: ${COLLABMD_RCLONE_HOST_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone/vault}
+        target: ${COLLABMD_RCLONE_CONTAINER_DIR:-/data}
+        bind:
+          propagation: rshared
+    labels:
+      - "caddy=${COLLABMD_RCLONE_CADDY_SITE:-http://collabmd-rclone.${DOMAIN}}"
+      - "caddy.reverse_proxy={{upstreams ${APP_PORT:-1234}}}"
+      - "caddy.basic_auth=/*"
+      - "caddy.basic_auth.${CADDY_AUTH_USER:-admin}=${CADDY_AUTH_HASH}"
+      - "caddy_1=${COLLABMD_RCLONE_TAILSCALE_SITE:-https://collabmd-rclone.${TAILSCALE_TAILNET_DOMAIN:-tailnet.local}}"
+      - "caddy_1.tls=internal"
+      - "caddy_1.reverse_proxy={{upstreams ${APP_PORT:-1234}}}"
+      - "caddy_1.basic_auth=/*"
+      - "caddy_1.basic_auth.${CADDY_AUTH_USER:-admin}=${CADDY_AUTH_HASH}"
+    depends_on:
+      collabmd-rclone-mount:
+        condition: service_started
+      collabmd-plantuml:
+        condition: service_started
+    networks: [app_net]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "sh"
+        - "-c"
+        - "wget -qO- http://localhost:${APP_PORT:-1234}${HEALTH_PATH:-/health} || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # rclone FUSE sidecar: mounts the configured remote into the host folder
+  # consumed by collabmd-rclone above.
+  collabmd-rclone-mount:
+    profiles: [collabmd-rclone]
+    container_name: "collabmd-rclone-mount"
+    image: rclone/rclone:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      set -eu
+      mkdir -p /config /data /cache
+      if [ -n "$${COLLABMD_RCLONE_CONFIG_B64:-}" ]; then
+        printf '%s' "$${COLLABMD_RCLONE_CONFIG_B64}" | base64 -d > /config/rclone.conf
+        chmod 600 /config/rclone.conf
+      fi
+      if [ ! -s /config/rclone.conf ]; then
+        echo "COLLABMD_RCLONE_CONFIG_B64 or /config/rclone.conf is required." >&2
+        exit 1
+      fi
+      if [ -z "$${COLLABMD_RCLONE_REMOTE:-}" ]; then
+        echo "COLLABMD_RCLONE_REMOTE is required." >&2
+        exit 1
+      fi
+      exec rclone mount "$${COLLABMD_RCLONE_REMOTE}" /data \
+        --config /config/rclone.conf \
+        --allow-other \
+        --vfs-cache-mode "$${COLLABMD_RCLONE_VFS_CACHE_MODE:-writes}" \
+        --cache-dir /cache \
+        --dir-cache-time "$${COLLABMD_RCLONE_DIR_CACHE_TIME:-1m}" \
+        --poll-interval "$${COLLABMD_RCLONE_POLL_INTERVAL:-1m}" \
+        --umask "$${COLLABMD_RCLONE_UMASK:-002}" \
+        --log-level "$${COLLABMD_RCLONE_LOG_LEVEL:-INFO}" \
+        $${COLLABMD_RCLONE_EXTRA_ARGS:-}
+    environment:
+      COLLABMD_RCLONE_CONFIG_B64: "${COLLABMD_RCLONE_CONFIG_B64:-}"
+      COLLABMD_RCLONE_REMOTE: "${COLLABMD_RCLONE_REMOTE:-}"
+      COLLABMD_RCLONE_VFS_CACHE_MODE: "${COLLABMD_RCLONE_VFS_CACHE_MODE:-writes}"
+      COLLABMD_RCLONE_DIR_CACHE_TIME: "${COLLABMD_RCLONE_DIR_CACHE_TIME:-1m}"
+      COLLABMD_RCLONE_POLL_INTERVAL: "${COLLABMD_RCLONE_POLL_INTERVAL:-1m}"
+      COLLABMD_RCLONE_UMASK: "${COLLABMD_RCLONE_UMASK:-002}"
+      COLLABMD_RCLONE_LOG_LEVEL: "${COLLABMD_RCLONE_LOG_LEVEL:-INFO}"
+      COLLABMD_RCLONE_EXTRA_ARGS: "${COLLABMD_RCLONE_EXTRA_ARGS:-}"
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - type: bind
+        source: ${COLLABMD_RCLONE_CONFIG_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone/config}
+        target: /config
+      - type: bind
+        source: ${COLLABMD_RCLONE_HOST_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone/vault}
+        target: /data
+        bind:
+          propagation: rshared
+      - type: bind
+        source: ${COLLABMD_RCLONE_CACHE_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone/cache}
+        target: /cache
+    networks: [app_net]
+    restart: unless-stopped
+
+  # ── CollabMD private git repo mode ────────────────────────────
+  collabmd-git:
+    profiles: [collabmd-git]
+    container_name: "collabmd-git"
+    image: "${COLLABMD_IMAGE:-ghcr.io/andes90/collabmd:latest}"
+    env_file:
+      - ./.env
+    environment:
+      <<: *collabmd-common-env
+      AUTH_STRATEGY: "${COLLABMD_GIT_AUTH_STRATEGY:-${COLLABMD_AUTH_STRATEGY:-none}}"
+      AUTH_PASSWORD: "${COLLABMD_GIT_AUTH_PASSWORD:-${COLLABMD_AUTH_PASSWORD:-}}"
+      AUTH_SESSION_COOKIE_NAME: "${COLLABMD_GIT_AUTH_SESSION_COOKIE_NAME:-${COLLABMD_AUTH_SESSION_COOKIE_NAME:-collabmd_git_auth}}"
+      PUBLIC_BASE_URL: "${COLLABMD_GIT_PUBLIC_BASE_URL:-${COLLABMD_PUBLIC_BASE_URL:-https://collabmd-git.${DOMAIN}}}"
+      COLLABMD_VAULT_DIR: "${COLLABMD_GIT_CONTAINER_DIR:-/data}"
+      COLLABMD_GIT_ENABLED: "${COLLABMD_GIT_APP_GIT_ENABLED:-true}"
+      COLLABMD_GIT_REPO_URL: "${COLLABMD_GIT_REPO_URL:-}"
+      COLLABMD_GIT_SSH_PRIVATE_KEY_FILE: "${COLLABMD_GIT_SSH_PRIVATE_KEY_FILE:-}"
+      COLLABMD_GIT_SSH_PRIVATE_KEY_B64: "${COLLABMD_GIT_SSH_PRIVATE_KEY_B64:-}"
+      COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE: "${COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE:-}"
+      COLLABMD_GIT_USER_NAME: "${COLLABMD_GIT_USER_NAME:-}"
+      COLLABMD_GIT_USER_EMAIL: "${COLLABMD_GIT_USER_EMAIL:-}"
+    ports:
+      - "${COLLABMD_GIT_BIND_IP:-127.0.0.1}:${COLLABMD_GIT_HOST_PORT:-1236}:${APP_PORT:-1234}"
+    volumes:
+      - type: bind
+        source: ${COLLABMD_GIT_HOST_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/git/vault}
+        target: ${COLLABMD_GIT_CONTAINER_DIR:-/data}
+      - type: bind
+        source: ${COLLABMD_GIT_SECRETS_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/git/secrets}
+        target: /run/secrets/collabmd
+        read_only: true
+    labels:
+      - "caddy=${COLLABMD_GIT_CADDY_SITE:-http://collabmd-git.${DOMAIN}}"
+      - "caddy.reverse_proxy={{upstreams ${APP_PORT:-1234}}}"
+      - "caddy.basic_auth=/*"
+      - "caddy.basic_auth.${CADDY_AUTH_USER:-admin}=${CADDY_AUTH_HASH}"
+      - "caddy_1=${COLLABMD_GIT_TAILSCALE_SITE:-https://collabmd-git.${TAILSCALE_TAILNET_DOMAIN:-tailnet.local}}"
+      - "caddy_1.tls=internal"
+      - "caddy_1.reverse_proxy={{upstreams ${APP_PORT:-1234}}}"
+      - "caddy_1.basic_auth=/*"
+      - "caddy_1.basic_auth.${CADDY_AUTH_USER:-admin}=${CADDY_AUTH_HASH}"
+    depends_on:
+      collabmd-plantuml:
+        condition: service_started
+    networks: [app_net]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "sh"
+        - "-c"
+        - "wget -qO- http://localhost:${APP_PORT:-1234}${HEALTH_PATH:-/health} || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 75s
+
+  # ── Shared private PlantUML renderer for enabled CollabMD apps ─
+  collabmd-plantuml:
+    profiles: [collabmd-local, collabmd-rclone, collabmd-git]
+    container_name: "collabmd-plantuml"
+    image: plantuml/plantuml-server:jetty
+    ports:
+      - "${COLLABMD_PLANTUML_BIND_IP:-127.0.0.1}:${COLLABMD_PLANTUML_HOST_PORT:-18082}:8080"
+    networks: [app_net]
+    restart: unless-stopped
