@@ -52,6 +52,39 @@ function isBool(v) {
   return v === "true" || v === "false";
 }
 
+function isPlaceholder(v) {
+  return /\b(your-|replace-|paste-|todo|changeme|example\.com|your-org|your-private-vault)\b/i.test(v);
+}
+
+function validateEmail(v) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? null : "must be a valid email address";
+}
+
+function validateContainerPath(v) {
+  return v.startsWith("/") ? null : "must be an absolute container path";
+}
+
+function validateGitRepoUrl(v) {
+  if (isPlaceholder(v)) return "replace the placeholder with the real private vault repo URL";
+  if (v.startsWith("git@") || v.startsWith("ssh://")) return null;
+  return "must be an SSH git URL, e.g. git@github.com:org/private-vault.git";
+}
+
+function validatePrivateKeyBase64(v) {
+  if (isPlaceholder(v)) return "replace the placeholder with a real base64-encoded private key";
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(v)) return "must be base64 without whitespace";
+  let decoded = "";
+  try {
+    decoded = Buffer.from(v, "base64").toString("utf8");
+  } catch {
+    return "must be valid base64";
+  }
+  if (!decoded.includes("-----BEGIN ") || !decoded.includes("PRIVATE KEY-----")) {
+    return "decoded value does not look like an SSH private key";
+  }
+  return null;
+}
+
 function checkPort(key, required = true) {
   const v = env[key];
   if (!v) {
@@ -97,6 +130,20 @@ function checkOptional(key, desc, validate) {
     }
   }
   ok.push(`${key}=OK (optional)`);
+}
+
+function checkOptionalIfSet(key, validate) {
+  const v = (env[key] || "").trim();
+  if (!v) return false;
+  if (validate) {
+    const msg = validate(v);
+    if (msg) {
+      errors.push(`${key}: ${msg}`);
+      return true;
+    }
+  }
+  ok.push(`${key}=OK (optional)`);
+  return true;
 }
 
 function isValidDomain(v) {
@@ -343,15 +390,31 @@ if (boolValue("COLLABMD_RCLONE_ENABLED", false)) {
 }
 
 if (boolValue("COLLABMD_GIT_DEPLOY_ENABLED", false)) {
-  checkRequired("COLLABMD_GIT_REPO_URL", "private git repo used to bootstrap the CollabMD vault");
-  checkOptional("COLLABMD_GIT_SSH_PRIVATE_KEY_FILE", "container path to mounted private key");
-  checkOptional("COLLABMD_GIT_SSH_PRIVATE_KEY_B64", "base64 private key for git bootstrap");
-  checkOptional("COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE", "container path to mounted known_hosts");
-  checkOptional("COLLABMD_GIT_USER_NAME", "git author/committer name");
-  checkOptional("COLLABMD_GIT_USER_EMAIL", "git author/committer email");
+  const gitAuthStrategy = (env.COLLABMD_GIT_AUTH_STRATEGY || env.COLLABMD_AUTH_STRATEGY || "none").trim();
+  checkRequired("COLLABMD_GIT_REPO_URL", "private git repo used to bootstrap the CollabMD vault", validateGitRepoUrl);
+  checkOptional("COLLABMD_GIT_SSH_PRIVATE_KEY_FILE", "container path to mounted private key", validateContainerPath);
+  checkOptional("COLLABMD_GIT_SSH_PRIVATE_KEY_B64", "base64 private key for git bootstrap", validatePrivateKeyBase64);
+  checkOptional("COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE", "container path to mounted known_hosts", validateContainerPath);
+  checkOptional("COLLABMD_GIT_TERMINAL_PROMPT", "0 disables interactive git prompts", (v) =>
+    v === "0" || v === "1" ? null : "must be 0 or 1"
+  );
+
+  const hasGitUserName = checkOptionalIfSet("COLLABMD_GIT_USER_NAME");
+  const hasGitUserEmail = checkOptionalIfSet("COLLABMD_GIT_USER_EMAIL", validateEmail);
+  if (!hasGitUserName && !hasGitUserEmail && gitAuthStrategy === "oidc") {
+    ok.push("CollabMD git commit identity=OIDC signed-in user");
+  } else if (!hasGitUserName || !hasGitUserEmail) {
+    warnings.push("COLLABMD_GIT_USER_NAME/COLLABMD_GIT_USER_EMAIL optional fallback identity incomplete; OIDC users can leave both blank");
+  }
 
   if (!env.COLLABMD_GIT_SSH_PRIVATE_KEY_FILE && !env.COLLABMD_GIT_SSH_PRIVATE_KEY_B64) {
     errors.push("COLLABMD_GIT_DEPLOY_ENABLED=true requires COLLABMD_GIT_SSH_PRIVATE_KEY_FILE or COLLABMD_GIT_SSH_PRIVATE_KEY_B64");
+  }
+  if (env.COLLABMD_GIT_SSH_PRIVATE_KEY_FILE && env.COLLABMD_GIT_SSH_PRIVATE_KEY_B64) {
+    warnings.push("COLLABMD_GIT_SSH_PRIVATE_KEY_FILE is set and takes precedence over COLLABMD_GIT_SSH_PRIVATE_KEY_B64");
+  }
+  if (!env.COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE) {
+    warnings.push("COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE not set -> CollabMD will use SSH StrictHostKeyChecking=accept-new");
   }
 }
 
